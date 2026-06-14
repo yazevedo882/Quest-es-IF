@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -21,6 +22,10 @@ const CAMPOS_VAZIOS = {
 };
 
 export default function Cadastro() {
+  const router = useRouter();
+  const [autorizado, setAutorizado] = useState(false);
+  const [verificando, setVerificando] = useState(true);
+
   const [form, setForm] = useState(CAMPOS_VAZIOS);
   const [imagem, setImagem] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -28,17 +33,31 @@ export default function Cadastro() {
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState(false);
 
+  useEffect(() => {
+    async function verificar() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+      const isProfessor = session.user.user_metadata?.professor === true;
+      if (!isProfessor) {
+        router.push('/');
+        return;
+      }
+      setAutorizado(true);
+      setVerificando(false);
+    }
+    verificar();
+  }, [router]);
+
   function atualizar(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
 
   function escolherImagem(e) {
     const arquivo = e.target.files?.[0];
-    if (!arquivo) {
-      setImagem(null);
-      setPreview(null);
-      return;
-    }
+    if (!arquivo) { setImagem(null); setPreview(null); return; }
     setImagem(arquivo);
     setPreview(URL.createObjectURL(arquivo));
   }
@@ -65,21 +84,13 @@ export default function Cadastro() {
     setSalvando(true);
     try {
       let imagem_url = null;
-
       if (imagem) {
         const nomeArquivo = `${Date.now()}-${imagem.name.replace(/\s+/g, '-')}`;
         const { error: erroUpload } = await supabase.storage
           .from('imagens-questoes')
           .upload(nomeArquivo, imagem);
-
-        if (erroUpload) {
-          throw new Error(`Falha ao enviar imagem: ${erroUpload.message}`);
-        }
-
-        const { data: urlData } = supabase.storage
-          .from('imagens-questoes')
-          .getPublicUrl(nomeArquivo);
-
+        if (erroUpload) throw new Error(`Falha ao enviar imagem: ${erroUpload.message}`);
+        const { data: urlData } = supabase.storage.from('imagens-questoes').getPublicUrl(nomeArquivo);
         imagem_url = urlData.publicUrl;
       }
 
@@ -95,9 +106,7 @@ export default function Cadastro() {
         imagem_url,
       });
 
-      if (erroInsert) {
-        throw new Error(erroInsert.message);
-      }
+      if (erroInsert) throw new Error(erroInsert.message);
 
       setForm(CAMPOS_VAZIOS);
       setImagem(null);
@@ -132,6 +141,16 @@ export default function Cadastro() {
     </div>
   );
 
+  if (verificando) {
+    return (
+      <div className="min-h-screen bg-stone-100 flex items-center justify-center p-4">
+        <p className="text-sm font-mono text-stone-400 uppercase tracking-wider">Verificando acesso...</p>
+      </div>
+    );
+  }
+
+  if (!autorizado) return null;
+
   return (
     <div className="min-h-screen bg-stone-100 flex items-start justify-center p-4">
       <div className="w-full max-w-md">
@@ -142,9 +161,7 @@ export default function Cadastro() {
 
         <div className="bg-white border-2 border-slate-900 rounded-2xl p-5">
           <div className="flex justify-between items-center mb-3">
-            <Link href="/" className="text-xs text-stone-400 font-mono underline">
-              ◂ voltar
-            </Link>
+            <Link href="/" className="text-xs text-stone-400 font-mono underline">◂ voltar</Link>
             <span className="text-xs font-mono text-stone-500 uppercase tracking-wider">Nova questão</span>
           </div>
 
@@ -200,9 +217,7 @@ export default function Cadastro() {
                 onChange={(e) => atualizar('correta', e.target.value)}
                 className="w-full border border-stone-300 rounded-lg p-2.5 bg-stone-50 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600"
               >
-                {LETRAS.map((l) => (
-                  <option key={l} value={l}>{l}</option>
-                ))}
+                {LETRAS.map((l) => (<option key={l} value={l}>{l}</option>))}
               </select>
             </div>
 
